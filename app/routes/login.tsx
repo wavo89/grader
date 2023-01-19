@@ -1,10 +1,16 @@
-import type { ActionArgs, LinksFunction } from "@remix-run/node";
+import type { ActionArgs, LinksFunction, MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { Link, useActionData, useSearchParams } from "@remix-run/react";
 
 import stylesUrl from "~/styles/login.css";
 import { db } from "~/utils/db.server";
 import { badRequest } from "~/utils/request.server";
-import { createUserSession, login } from "~/utils/session.server";
+import { createUserSession, login, register } from "~/utils/session.server";
+
+export const meta: MetaFunction = () => ({
+  description: "Login to submit your own jokes to Remix Jokes!",
+  title: "Remix Jokes | Login"
+});
 
 export const links: LinksFunction = () => [
   { rel: "stylesheet", href: stylesUrl }
@@ -22,21 +28,20 @@ function validatePassword(password: unknown) {
   }
 }
 
-// used to be used under reidrectTo
-// function validateUrl(url: string) {
-//   let urls = ["/jokes", "/", "https://remix.run"];
-//   if (urls.includes(url)) {
-//     return url;
-//   }
-//   return "/jokes";
-// }
+function validateUrl(url: string) {
+  let urls = ["/jokes", "/", "https://remix.run"];
+  if (urls.includes(url)) {
+    return url;
+  }
+  return "/jokes";
+}
 
 export const action = async ({ request }: ActionArgs) => {
   const form = await request.formData();
   const loginType = form.get("loginType");
   const username = form.get("username");
   const password = form.get("password");
-  const redirectTo = form.get("redirectTo") || "/jokes";
+  const redirectTo = validateUrl(form.get("redirectTo") || "/jokes");
   if (
     typeof loginType !== "string" ||
     typeof username !== "string" ||
@@ -66,7 +71,6 @@ export const action = async ({ request }: ActionArgs) => {
   switch (loginType) {
     case "login": {
       const user = await login({ username, password });
-      console.log({ user });
       if (!user) {
         return badRequest({
           fieldErrors: null,
@@ -74,7 +78,6 @@ export const action = async ({ request }: ActionArgs) => {
           formError: `Username/Password combination is incorrect`
         });
       }
-      // if there is a user, create their session and redirect to /jokes
       return createUserSession(user.id, redirectTo);
     }
     case "register": {
@@ -88,13 +91,15 @@ export const action = async ({ request }: ActionArgs) => {
           formError: `User with username ${username} already exists`
         });
       }
-      // create the user
-      // create their session and redirect to /jokes
-      return badRequest({
-        fieldErrors: null,
-        fields,
-        formError: "Not implemented"
-      });
+      const user = await register({ username, password });
+      if (!user) {
+        return badRequest({
+          fieldErrors: null,
+          fields,
+          formError: `Something went wrong trying to create a new user.`
+        });
+      }
+      return createUserSession(user.id, redirectTo);
     }
     default: {
       return badRequest({
